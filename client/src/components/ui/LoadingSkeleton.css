@@ -1,0 +1,9 @@
+@keyframes skeleton-pulse {
+  0% { background-color: var(--surface-hover); }
+  50% { background-color: var(--surface-border); }
+  100% { background-color: var(--surface-hover); }
+}
+
+.skeleton-pulse {
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
