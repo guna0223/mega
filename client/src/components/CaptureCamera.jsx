@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect, useCallback } from "react";
 import Webcam from "react-webcam";
+import { io } from "socket.io-client";
 import { Camera, PauseCircle, PlayCircle, ScanLine, Activity } from "lucide-react";
 import api from "../api/api";
 import StatusPill from "./ui/StatusPill";
@@ -11,6 +12,8 @@ const videoConstraints = {
   height: 720,
   facingMode: "environment",
 };
+
+const SOCKET_URL = process.env.REACT_APP_API_URL?.replace("/api", "") || "http://localhost:5000";
 
 export default function CaptureCamera() {
   const webcamRef = useRef(null);
@@ -83,13 +86,6 @@ export default function CaptureCamera() {
         
         // Show success overlay
         setSuccessOverlay(entry);
-        
-        // Update recent scans list (keep last 8 for sidebar)
-        setRecentScans(prev => {
-          if (prev.length > 0 && prev[0]._id === entry._id) return prev;
-          const newScans = [entry, ...prev].slice(0, 8);
-          return newScans;
-        });
 
         addToast({
           title: "Plate Detected",
@@ -123,6 +119,20 @@ export default function CaptureCamera() {
       }
     }
   }, [isScanning, addToast]);
+
+  // Live WebSocket Updates
+  useEffect(() => {
+    const socket = io(SOCKET_URL);
+    socket.on("new-entry", (newEntry) => {
+      setRecentScans(prev => {
+        if (prev.length > 0 && prev[0]._id === newEntry._id) return prev;
+        const newScans = [newEntry, ...prev].slice(0, 8);
+        return newScans;
+      });
+    });
+
+    return () => socket.disconnect();
+  }, []);
 
   useEffect(() => {
     let intervalId;
