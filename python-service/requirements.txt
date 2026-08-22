@@ -1,3 +1,7 @@
 Flask
 opencv-python
 numpy
+easyocr
+pymongo
+python-dotenv
+requests
