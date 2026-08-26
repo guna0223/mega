@@ -137,7 +137,7 @@ export default function CaptureCamera() {
   useEffect(() => {
     let intervalId;
     if (isScanning && !successOverlay) {
-      intervalId = setInterval(scanFrame, 2000);
+      intervalId = setInterval(scanFrame, 500);
     }
     return () => {
       if (intervalId) clearInterval(intervalId);
