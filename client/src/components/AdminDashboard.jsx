@@ -4,12 +4,14 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell 
 } from 'recharts';
 import { 
-  Bus, MapPin, Activity, Search, Filter, ChevronLeft, ChevronRight, Image as ImageIcon, X, AlertTriangle, Check
+  Bus, MapPin, Activity, Search, Filter, ChevronLeft, ChevronRight, Image as ImageIcon, X, AlertTriangle, Check, Download, Trash2
 } from "lucide-react";
 import api from "../api/api";
 import StatusPill from "./ui/StatusPill";
 import { useToast } from "./ui/Toast";
 import LoadingSkeleton from "./ui/LoadingSkeleton";
+import jsPDF from "jspdf";
+import "jspdf-autotable";
 import "./AdminDashboard.css";
 
 const SOCKET_URL = process.env.REACT_APP_API_URL?.replace("/api", "") || "http://localhost:5000";
@@ -29,7 +31,7 @@ export default function AdminDashboard() {
   const [isLoading, setIsLoading] = useState(true);
   
   // Tabs
-  const [activeTab, setActiveTab] = useState("matched"); // "matched" | "unmatched"
+  const [activeTab, setActiveTab] = useState("matched"); // "matched" = Bus Status | "unmatched" = raw OCR misses
 
   // Filters
   const [plateFilter, setPlateFilter] = useState("");
@@ -55,16 +57,27 @@ export default function AdminDashboard() {
   const fetchEntries = async () => {
     setIsLoading(true);
     try {
-      const params = {};
-      if (debouncedPlateFilter) params.plateNumber = debouncedPlateFilter;
-      if (statusFilter && activeTab === "matched") params.status = statusFilter;
-      params.matchedBus = activeTab === "matched"; // Filter by matched/unmatched
-      
-      const res = await api.get("/entries", { params });
-      setEntries(res.data.entries);
+      if (activeTab === "matched") {
+        // Bus Status view: every registered bus + its current IN/OUT status
+        const params = {};
+        if (debouncedPlateFilter) params.plateNumber = debouncedPlateFilter;
+        if (statusFilter) params.status = statusFilter;
+
+        const res = await api.get("/buses/status", { params });
+        setEntries(res.data.buses);
+      } else {
+        // Unmatched Reads view: raw OCR misses
+        const params = { matchedBus: false };
+        if (debouncedPlateFilter) params.plateNumber = debouncedPlateFilter;
+
+        const res = await api.get("/entries", { params });
+        setEntries(res.data.entries);
+      }
       setCurrentPage(1);
     } catch (error) {
-      addToast({ title: "Error fetching data", type: "error" });
+      console.error("Fetch entries error:", error);
+      const errMsg = error.response?.data?.message || error.message || "Error fetching data";
+      addToast({ title: "Fetch Error", description: errMsg, type: "error" });
     } finally {
       setIsLoading(false);
     }
@@ -99,7 +112,7 @@ export default function AdminDashboard() {
 
     const socket = io(SOCKET_URL);
     socket.on("new-entry", (newEntry) => {
-      fetchEntries(); // Refresh table
+      fetchEntries(); // Refresh table (bus status changes on every scan too)
       if (newEntry && newEntry.matchedBus) {
          fetchStats();
          addToast({
@@ -144,6 +157,60 @@ export default function AdminDashboard() {
     }
   };
 
+  const downloadLastMonthData = async () => {
+    try {
+      const res = await api.get("/entries/export-last-month");
+      const data = res.data.entries;
+      if (!data || data.length === 0) {
+        addToast({ title: "No data found", description: "No entries in the last 1 month.", type: "info" });
+        return;
+      }
+
+      const doc = new jsPDF();
+      doc.text("Bus Gate Entries - Last 1 Month", 14, 15);
+      
+      const tableColumn = ["Plate Number", "Status", "Date", "Time", "Matched Bus"];
+      const tableRows = [];
+      
+      data.forEach(entry => {
+        const date = new Date(entry.timestamp);
+        const ticketData = [
+          entry.plateNumber,
+          entry.status,
+          date.toLocaleDateString(),
+          date.toLocaleTimeString(),
+          entry.matchedBus ? "Yes" : "No"
+        ];
+        tableRows.push(ticketData);
+      });
+
+      doc.autoTable({
+        head: [tableColumn],
+        body: tableRows,
+        startY: 20,
+      });
+
+      doc.save("BusGate_Entries_LastMonth.pdf");
+      addToast({ title: "PDF downloaded successfully", type: "success" });
+    } catch (error) {
+      console.error(error);
+      addToast({ title: "Export Failed", description: "Failed to generate PDF.", type: "error" });
+    }
+  };
+
+  const deleteLastMonthData = async () => {
+    if (!window.confirm("Are you sure you want to delete all entries from the last 1 month? This action cannot be undone.")) return;
+    try {
+      const res = await api.delete("/entries/delete-last-month");
+      addToast({ title: "Success", description: res.data.message || "Data deleted successfully", type: "success" });
+      fetchEntries();
+      fetchStats();
+    } catch (error) {
+      console.error(error);
+      addToast({ title: "Delete Failed", description: "Failed to delete data.", type: "error" });
+    }
+  };
+
   // Pagination Logic
   const totalPages = Math.ceil(entries.length / itemsPerPage);
   const currentEntries = useMemo(() => {
@@ -158,10 +225,18 @@ export default function AdminDashboard() {
 
   return (
     <div className="dashboard-wrapper animate-fade-in">
-      <div className="dashboard-header">
+      <div className="dashboard-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <h2>System Overview</h2>
           <p className="subtitle">Real-time gate analytics and logs</p>
+        </div>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button className="btn-primary" onClick={downloadLastMonthData} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Download size={16} /> Export (Last 1 Month)
+          </button>
+          <button className="btn-danger" onClick={deleteLastMonthData} style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'var(--danger-color)', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: 'var(--radius-md)', cursor: 'pointer' }}>
+            <Trash2 size={16} /> Delete Old Data
+          </button>
         </div>
       </div>
 
@@ -201,7 +276,7 @@ export default function AdminDashboard() {
                 className={`tab-btn ${activeTab === 'matched' ? 'active' : ''}`}
                 onClick={() => setActiveTab('matched')}
               >
-                System Logs
+                Bus Status
               </button>
               <button 
                 className={`tab-btn ${activeTab === 'unmatched' ? 'active' : ''}`}
@@ -239,9 +314,10 @@ export default function AdminDashboard() {
               <thead>
                 <tr>
                   <th>Image</th>
-                  <th>{activeTab === 'matched' ? 'Plate Number' : 'Raw OCR Text'}</th>
+                  <th>Plate Number</th>
+                  {activeTab === 'matched' && <th>Route</th>}
                   {activeTab === 'matched' ? <th>Status</th> : <th>Issue</th>}
-                  <th>Time</th>
+                  <th>{activeTab === 'matched' ? 'Last Seen' : 'Time'}</th>
                   <th>Confidence</th>
                   {activeTab === 'unmatched' && <th>Action</th>}
                 </tr>
@@ -252,6 +328,7 @@ export default function AdminDashboard() {
                     <tr key={i}>
                       <td><LoadingSkeleton width="40px" height="30px" /></td>
                       <td><LoadingSkeleton width="100px" height="20px" /></td>
+                      {activeTab === 'matched' && <td><LoadingSkeleton width="80px" height="20px" /></td>}
                       <td><LoadingSkeleton width="60px" height="24px" borderRadius="12px" /></td>
                       <td><LoadingSkeleton width="120px" height="20px" /></td>
                       <td><LoadingSkeleton width="40px" height="20px" /></td>
@@ -260,10 +337,10 @@ export default function AdminDashboard() {
                   ))
                 ) : currentEntries.length === 0 ? (
                   <tr>
-                    <td colSpan={activeTab === 'matched' ? 5 : 6} className="empty-state">
+                    <td colSpan={6} className="empty-state">
                       <div className="empty-state-content">
                         {activeTab === 'matched' ? (
-                          <><Search size={48} /> <h4>No entries found</h4></>
+                          <><Search size={48} /> <h4>No buses found</h4></>
                         ) : (
                           <><Check size={48} className="text-success" /> <h4>All caught up!</h4><p>No unmatched reads.</p></>
                         )}
@@ -271,69 +348,81 @@ export default function AdminDashboard() {
                     </td>
                   </tr>
                 ) : (
-                  currentEntries.map((e) => (
-                    <tr key={e._id}>
-                      <td>
-                        <button 
-                          className="thumb-btn" 
-                          onClick={() => setSelectedImage(e.image || e.imageUrl)}
-                          disabled={!e.image && !e.imageUrl}
-                          title={e.image || e.imageUrl ? "View Image" : "No image available"}
-                        >
-                          {(e.image || e.imageUrl) ? (
-                            <img src={e.image || e.imageUrl} alt="Plate" className="mini-thumb" />
-                          ) : (
-                            <div className="mini-thumb fallback"><ImageIcon size={16}/></div>
-                          )}
-                        </button>
-                      </td>
-                      <td>
-                        <span className="font-mono plate-text">{activeTab === 'matched' ? e.plateNumber : (e.rawOcrText || e.plateNumber)}</span>
-                      </td>
-                      <td>
-                        {activeTab === 'matched' ? (
-                          <StatusPill status={e.status} />
-                        ) : (
-                          <span className="unmatched-badge"><AlertTriangle size={14}/> Not Registered</span>
-                        )}
-                      </td>
-                      <td>
-                        <div className="time-cell">
-                          <span className="time-date">
-                            {new Date(e.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                          </span>
-                          <span className="time-time">
-                            {new Date(e.timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
-                      </td>
-                      <td>
-                        {e.detectedConfidence ? (
-                          <div className="confidence-bar-wrap">
-                            <div className="confidence-track">
-                              <div 
-                                className="confidence-fill" 
-                                style={{ 
-                                  width: `${e.detectedConfidence}%`,
-                                  background: e.detectedConfidence > 80 ? 'var(--success-color)' : 'var(--warning-color)'
-                                }}
-                              ></div>
-                            </div>
-                            <span className="confidence-text">{Math.round(e.detectedConfidence)}%</span>
-                          </div>
-                        ) : (
-                          <span className="na-text">N/A</span>
-                        )}
-                      </td>
-                      {activeTab === 'unmatched' && (
+                  currentEntries.map((e) => {
+                    const timeValue = activeTab === 'matched' ? e.lastSeen : e.timestamp;
+                    return (
+                      <tr key={e._id}>
                         <td>
-                          <button className="btn-assign" onClick={() => handleAssignClick(e)}>
-                            Assign
+                          <button 
+                            className="thumb-btn" 
+                            onClick={() => setSelectedImage(e.image || e.imageUrl)}
+                            disabled={!e.image && !e.imageUrl}
+                            title={e.image || e.imageUrl ? "View Image" : "No image available"}
+                          >
+                            {(e.image || e.imageUrl) ? (
+                              <img src={e.image || e.imageUrl} alt="Plate" className="mini-thumb" />
+                            ) : (
+                              <div className="mini-thumb fallback"><ImageIcon size={16}/></div>
+                            )}
                           </button>
                         </td>
-                      )}
-                    </tr>
-                  ))
+                        <td>
+                          <span className="font-mono plate-text">{activeTab === 'matched' ? e.plateNumber : (e.rawOcrText || e.plateNumber)}</span>
+                        </td>
+                        {activeTab === 'matched' && (
+                          <td>
+                            {e.routeName ? e.routeName : <span className="na-text">N/A</span>}
+                          </td>
+                        )}
+                        <td>
+                          {activeTab === 'matched' ? (
+                            <StatusPill status={e.status} />
+                          ) : (
+                            <span className="unmatched-badge"><AlertTriangle size={14}/> Not Registered</span>
+                          )}
+                        </td>
+                        <td>
+                          {timeValue ? (
+                            <div className="time-cell">
+                              <span className="time-date">
+                                {new Date(timeValue).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                              </span>
+                              <span className="time-time">
+                                {new Date(timeValue).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="na-text">Never scanned</span>
+                          )}
+                        </td>
+                        <td>
+                          {e.detectedConfidence ? (
+                            <div className="confidence-bar-wrap">
+                              <div className="confidence-track">
+                                <div 
+                                  className="confidence-fill" 
+                                  style={{ 
+                                    width: `${e.detectedConfidence}%`,
+                                    background: e.detectedConfidence > 80 ? 'var(--success-color)' : 'var(--warning-color)'
+                                  }}
+                                ></div>
+                              </div>
+                              <span className="confidence-text">{Math.round(e.detectedConfidence)}%</span>
+                            </div>
+                          ) : (
+                            <span className="na-text">N/A</span>
+                          )}
+                        </td>
+                        {activeTab === 'unmatched' && (
+                          <td>
+                            <button className="btn-assign" onClick={() => handleAssignClick(e)}>
+                              Assign
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
