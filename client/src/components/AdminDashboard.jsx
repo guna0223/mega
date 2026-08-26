@@ -49,7 +49,8 @@ export default function AdminDashboard() {
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [entryToAssign, setEntryToAssign] = useState(null);
   const [registeredBuses, setRegisteredBuses] = useState([]);
-  const [selectedBusToAssign, setSelectedBusToAssign] = useState("");
+  const [assignPlateNumber, setAssignPlateNumber] = useState("");
+  const [assignRouteName, setAssignRouteName] = useState("");
   const [isAssigning, setIsAssigning] = useState(false);
 
   const { addToast } = useToast();
@@ -135,16 +136,18 @@ export default function AdminDashboard() {
 
   const handleAssignClick = (entry) => {
     setEntryToAssign(entry);
-    setSelectedBusToAssign("");
+    setAssignPlateNumber(entry.rawOcrText || entry.plateNumber || "");
+    setAssignRouteName("");
     setAssignModalOpen(true);
   };
 
   const submitAssign = async () => {
-    if (!selectedBusToAssign) return;
+    if (!assignPlateNumber) return;
     setIsAssigning(true);
     try {
       await api.put(`/entries/${entryToAssign._id}/assign`, {
-        plateNumber: selectedBusToAssign
+        plateNumber: assignPlateNumber,
+        routeName: assignRouteName
       });
       addToast({ title: "Successfully assigned plate", type: "success" });
       setAssignModalOpen(false);
@@ -494,24 +497,30 @@ export default function AdminDashboard() {
             </p>
             
             <div className="form-group" style={{ marginTop: '16px' }}>
-              <label>Select Registered Bus</label>
-              <select 
+              <label>Plate Number</label>
+              <input 
+                type="text"
                 className="form-input" 
-                value={selectedBusToAssign} 
-                onChange={e => setSelectedBusToAssign(e.target.value)}
-              >
-                <option value="">-- Choose a Bus --</option>
-                {registeredBuses.map(b => (
-                  <option key={b._id} value={b.plateNumber}>
-                    {b.plateNumber} {b.routeName ? `(${b.routeName})` : ''}
-                  </option>
-                ))}
-              </select>
+                value={assignPlateNumber} 
+                onChange={e => setAssignPlateNumber(e.target.value)}
+                placeholder="e.g. TN3815131"
+              />
+            </div>
+            
+            <div className="form-group" style={{ marginTop: '16px' }}>
+              <label>Route Name (Optional)</label>
+              <input 
+                type="text"
+                className="form-input" 
+                value={assignRouteName} 
+                onChange={e => setAssignRouteName(e.target.value)}
+                placeholder="e.g. Campus Route 1"
+              />
             </div>
             
             <div className="modal-actions">
               <button className="btn-secondary" onClick={() => setAssignModalOpen(false)}>Cancel</button>
-              <button className="btn-primary" disabled={!selectedBusToAssign || isAssigning} onClick={submitAssign}>
+              <button className="btn-primary" disabled={!assignPlateNumber || isAssigning} onClick={submitAssign}>
                 {isAssigning ? "Assigning..." : "Assign & Log"}
               </button>
             </div>
