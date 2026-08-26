@@ -254,7 +254,7 @@ def detect():
         rawText = best_text
         confidence = float(best_conf * 100)
 
-        if confidence < 60:
+        if confidence < 40:
             return jsonify({'message': 'Confidence too low', 'rawText': rawText}), 202
 
         # Clean raw string
@@ -270,7 +270,7 @@ def detect():
         global_frame_buffer.append({'finalPlate': finalPlate, 'confidence': confidence, 'timestamp': now})
 
         consensusReached = False
-        if confidence >= 75:
+        if confidence >= 40:
             consensusReached = True
         else:
             count = len([f for f in global_frame_buffer if f['finalPlate'] == finalPlate])
