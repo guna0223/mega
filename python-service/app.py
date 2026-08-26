@@ -150,6 +150,14 @@ def base64_to_cv2(base64_str):
     img_data = base64.b64decode(base64_str)
     nparr = np.frombuffer(img_data, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    
+    # Resize image to speed up processing
+    height, width = img.shape[:2]
+    max_width = 800
+    if width > max_width:
+        ratio = max_width / float(width)
+        img = cv2.resize(img, (max_width, int(height * ratio)))
+        
     return img
 
 
@@ -174,8 +182,8 @@ def find_plate_contour(img):
         if len(approx) == 4:
             x, y, w, h = cv2.boundingRect(approx)
             aspect_ratio = w / float(h)
-            if 2.0 <= aspect_ratio <= 6.0:
-                if w * h > 3000:
+            if 1.5 <= aspect_ratio <= 6.0:
+                if w * h > 500:
                     plate_contour = approx
                     break
     return plate_contour
