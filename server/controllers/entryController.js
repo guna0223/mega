@@ -88,4 +88,36 @@ async function getStats(req, res) {
   }
 }
 
-module.exports = { getEntries, getStats, assignEntry };
+// GET /api/entries/export-last-month
+async function exportLastMonth(req, res) {
+  try {
+    const oneMonthAgo = new Date();
+    oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+    
+    const entries = await BusEntry.find({
+      timestamp: { $gte: oneMonthAgo }
+    }).sort({ timestamp: -1 });
+    
+    res.json({ entries });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+}
+
+// DELETE /api/entries/delete-last-month
+async function deleteLastMonth(req, res) {
+  try {
+    const oneMonthAgo = new Date();
+    oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+    
+    const result = await BusEntry.deleteMany({
+      timestamp: { $gte: oneMonthAgo }
+    });
+    
+    res.json({ message: `Deleted ${result.deletedCount} entries from the last month.` });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+}
+
+module.exports = { getEntries, getStats, assignEntry, exportLastMonth, deleteLastMonth };
