@@ -29,27 +29,41 @@ async function getEntries(req, res) {
 }
 
 // PUT /api/entries/:id/assign
-// Body: { plateNumber: "TN3815131" }
+// Body: { plateNumber: "TN3815131", routeName: "Campus Route 1" }
 async function assignEntry(req, res) {
   try {
     const { id } = req.params;
-    const { plateNumber } = req.body;
+    const { plateNumber, routeName } = req.body;
     
     if (!plateNumber) return res.status(400).json({ message: "plateNumber required" });
 
     // When assigning, we assume they are making it a valid entry.
-    // Determine IN/OUT status based on last entry of this new plate before this timestamp
+    // Register the bus if it doesn't exist
+    const Bus = require("../models/Bus");
+    let bus = await Bus.findOne({ plateNumber: { $regex: new RegExp('^' + plateNumber + '$', 'i') } });
+    if (!bus) {
+      bus = new Bus({
+        plateNumber: plateNumber.toUpperCase(),
+        routeName: routeName || "Unknown Route",
+        isActive: true
+      });
+      await bus.save();
+    } else if (routeName && bus.routeName !== routeName) {
+      bus.routeName = routeName;
+      await bus.save();
+    }
+
     const entry = await BusEntry.findById(id);
     if (!entry) return res.status(404).json({ message: "Entry not found" });
 
     const lastEntry = await BusEntry.findOne({ 
-      plateNumber, 
+      plateNumber: bus.plateNumber, 
       timestamp: { $lt: entry.timestamp } 
     }).sort({ timestamp: -1 });
 
     const newStatus = !lastEntry || lastEntry.status === "OUT" ? "IN" : "OUT";
 
-    entry.plateNumber = plateNumber;
+    entry.plateNumber = bus.plateNumber;
     entry.status = newStatus;
     entry.matchedBus = true;
     entry.matchConfidence = 100; // Manually assigned
