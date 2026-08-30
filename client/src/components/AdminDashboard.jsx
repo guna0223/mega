@@ -11,7 +11,7 @@ import StatusPill from "./ui/StatusPill";
 import { useToast } from "./ui/Toast";
 import LoadingSkeleton from "./ui/LoadingSkeleton";
 import jsPDF from "jspdf";
-import "jspdf-autotable";
+import autoTable from "jspdf-autotable";
 import "./AdminDashboard.css";
 
 const SOCKET_URL = process.env.REACT_APP_API_URL?.replace("/api", "") || "http://localhost:5000";
@@ -102,10 +102,13 @@ export default function AdminDashboard() {
     }
   };
 
+  // Trigger a refetch instead of calling stale fetchEntries
+  const [refetchTrigger, setRefetchTrigger] = useState(0);
+
   useEffect(() => {
     fetchEntries();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedPlateFilter, statusFilter, activeTab]);
+  }, [debouncedPlateFilter, statusFilter, activeTab, refetchTrigger]);
 
   useEffect(() => {
     fetchStats();
@@ -113,7 +116,7 @@ export default function AdminDashboard() {
 
     const socket = io(SOCKET_URL);
     socket.on("new-entry", (newEntry) => {
-      fetchEntries(); // Refresh table (bus status changes on every scan too)
+      setRefetchTrigger(prev => prev + 1); // Refresh table
       if (newEntry && newEntry.matchedBus) {
          fetchStats();
          addToast({
@@ -187,7 +190,7 @@ export default function AdminDashboard() {
         tableRows.push(ticketData);
       });
 
-      doc.autoTable({
+      autoTable(doc, {
         head: [tableColumn],
         body: tableRows,
         startY: 20,
@@ -202,7 +205,7 @@ export default function AdminDashboard() {
   };
 
   const deleteLastMonthData = async () => {
-    if (!window.confirm("Are you sure you want to delete all entries from the last 1 month? This action cannot be undone.")) return;
+    if (!window.confirm("Are you sure you want to delete all entries older than 1 month? This action cannot be undone.")) return;
     try {
       const res = await api.delete("/entries/delete-last-month");
       addToast({ title: "Success", description: res.data.message || "Data deleted successfully", type: "success" });
