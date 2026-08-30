@@ -19,16 +19,6 @@ except ImportError:
 
 app = Flask(__name__)
 
-# ---------------------------------------------------------------------------
-# EasyOCR model download (manual, with retries)
-# ---------------------------------------------------------------------------
-# easyocr's built-in downloader uses urllib, which can fail with
-# "ConnectionResetError: [WinError 10054]" behind flaky networks, some
-# antivirus tools, or corporate proxies. We download the models ourselves
-# using requests (with retries + backoff), verify the file, then point
-# easyocr at the already-downloaded models with download_enabled=False so
-# it never touches the network.
-
 MODEL_DIR = os.path.join(os.path.expanduser("~"), ".EasyOCR", "model")
 
 MODELS = {
