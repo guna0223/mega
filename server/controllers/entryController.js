@@ -125,10 +125,10 @@ async function deleteLastMonth(req, res) {
     oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
     
     const result = await BusEntry.deleteMany({
-      timestamp: { $gte: oneMonthAgo }
+      timestamp: { $lt: oneMonthAgo }
     });
     
-    res.json({ message: `Deleted ${result.deletedCount} entries from the last month.` });
+    res.json({ message: `Deleted ${result.deletedCount} entries older than 1 month.` });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
